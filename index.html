@@ -3,14 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GreenBook — Соцсеть с Авторизацией</title>
-    <!-- Подключаем Supabase JS Client -->
+    <title>GreenBook — Вход по ID</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         :root {
             --bg-main: #f0f2f5;
             --bg-card: #ffffff;
-            --primary-color: #2ecc71; /* Наш сочный зеленый */
+            --primary-color: #2ecc71; 
             --primary-hover: #27ae60;
             --text-main: #050505;
             --text-secondary: #65676b;
@@ -57,9 +56,10 @@
             gap: 12px;
         }
 
-        .user-email {
-            font-size: 14px;
-            color: var(--text-secondary);
+        .user-name-display {
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--text-main);
         }
 
         .btn-logout {
@@ -67,21 +67,22 @@
             color: var(--text-secondary);
             border: 1px solid var(--border-color);
             padding: 6px 12px;
+            border-radius: 6px;
             font-size: 13px;
+            cursor: pointer;
         }
         .btn-logout:hover {
             background-color: #f0f2f5;
             color: #ff4d4d;
         }
 
-        /* Контейнер */
+        /* Контейнер и карточки */
         .container {
             max-width: 580px;
             margin: 20px auto;
             padding: 0 10px;
         }
 
-        /* Карточки общего вида */
         .card {
             background-color: var(--bg-card);
             border-radius: 8px;
@@ -90,7 +91,7 @@
             margin-bottom: 16px;
         }
 
-        /* Форма входа / Регистрации */
+        /* Форма авторизации */
         .auth-box h3 {
             margin-bottom: 14px;
             text-align: center;
@@ -140,6 +141,7 @@
             font-weight: bold;
             font-size: 16px;
             flex-shrink: 0;
+            text-transform: uppercase;
         }
 
         textarea {
@@ -165,7 +167,7 @@
             padding-top: 12px;
         }
 
-        button {
+        button.primary-btn {
             background-color: var(--primary-color);
             color: white;
             border: none;
@@ -176,7 +178,7 @@
             cursor: pointer;
             transition: background 0.2s;
         }
-        button:hover {
+        button.primary-btn:hover {
             background-color: var(--primary-hover);
         }
 
@@ -214,7 +216,6 @@
             padding: 20px;
         }
 
-        /* Утилиты видимости */
         .hidden { display: none !important; }
     </style>
 </head>
@@ -223,36 +224,35 @@
     <!-- Шапка -->
     <header>
         <a href="#" class="logo">GreenBook</a>
-        <div class="header-right" id="headerUserZone">
-            <!-- Сюда скрипт вставит email и кнопку выхода, если юзер залогинен -->
-        </div>
+        <div class="header-right" id="headerUserZone"></div>
     </header>
 
     <div class="container">
         
-        <!-- Окна авторизации (Вход / Регистрация) -->
+        <!-- Окна авторизации -->
         <div id="authBlock" class="card auth-box">
             <h3 id="authTitle">Вход в GreenBook</h3>
             <div class="auth-form">
-                <input type="email" id="authEmail" placeholder="Электронная почта">
+                <!-- Заменили тип email на text -->
+                <input type="text" id="authUsername" placeholder="Логин (например: Alex99)">
                 <input type="password" id="authPassword" placeholder="Пароль">
-                <button id="authBtn" onclick="handleAuth()">Войти</button>
+                <button id="authBtn" class="primary-btn" onclick="handleAuth()">Войти</button>
             </div>
             <p class="auth-toggle-text" id="authToggle" onclick="toggleAuthMode()">Нет аккаунта? Зарегистрироваться</p>
         </div>
 
-        <!-- Блок создания поста (виден только авторизованным) -->
+        <!-- Блок создания поста -->
         <div id="createPostBlock" class="card hidden">
             <div class="create-post-input-area">
                 <div class="avatar" id="myAvatar">U</div>
                 <textarea id="postContent" placeholder="Что у вас нового?"></textarea>
             </div>
             <div class="create-post-actions">
-                <button id="submitPostBtn" onclick="createPost()">Опубликовать</button>
+                <button id="submitPostBtn" class="primary-btn" onclick="createPost()">Опубликовать</button>
             </div>
         </div>
 
-        <!-- Лента постов (доступна всем) -->
+        <!-- Лента постов -->
         <div id="feed">
             <div class="loading">Загрузка публикаций...</div>
         </div>
@@ -260,17 +260,16 @@
     </div>
 
     <script>
-        // Конфигурация Supabase из твоего запроса
         const SUPABASE_URL = "https://kzvzmiewytwosnklupzl.supabase.co";
         const SUPABASE_KEY = "sb_publishable_TFXPSCgEIkOKpvLcVT3-Dg_DGLHV4OJ"; 
-        
         const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-        // Переменные состояния приложения
-        let currentUser = null;
-        let isSignUpMode = false; // Переключатель: false = вход, true = регистрация
+        // Фейковый домен, чтобы обмануть Supabase Auth
+        const FAKE_DOMAIN = "@greenbook.app";
 
-        // DOM элементы
+        let currentUser = null;
+        let isSignUpMode = false;
+
         const authBlock = document.getElementById('authBlock');
         const authTitle = document.getElementById('authTitle');
         const authBtn = document.getElementById('authBtn');
@@ -279,84 +278,104 @@
         const feedContainer = document.getElementById('feed');
         const headerUserZone = document.getElementById('headerUserZone');
 
-        // 1. Инициализация и отслеживание сессии пользователя
+        // Вспомогательная функция: достать чистый логин из почты
+        function extractUsername(email) {
+            return email.split('@')[0];
+        }
+
         async function initApp() {
-            // Проверяем текущего юзера при загрузке страницы
             const { data: { user } } = await supabase.auth.getUser();
             updateUserSession(user);
 
-            // Слушаем изменения состояния (вход, выход, регистрация) в реальном времени
             supabase.auth.onAuthStateChange((event, session) => {
                 updateUserSession(session?.user || null);
             });
 
-            // Загружаем ленту
             await fetchPosts();
         }
 
-        // Обновление интерфейса в зависимости от того, вошел юзер или нет
         function updateUserSession(user) {
             currentUser = user;
             if (user) {
-                // Если юзер вошел
+                const username = extractUsername(user.email);
+                
                 authBlock.classList.add('hidden');
                 createPostBlock.classList.remove('hidden');
-                document.getElementById('myAvatar').innerText = user.email[0].toUpperCase();
+                document.getElementById('myAvatar').innerText = username[0];
                 
                 headerUserZone.innerHTML = `
-                    <span class="user-email">${user.email}</span>
+                    <span class="user-name-display">${username}</span>
                     <button class="btn-logout" onclick="logout()">Выйти</button>
                 `;
             } else {
-                // Если юзер вышел / не авторизован
                 authBlock.classList.remove('hidden');
                 createPostBlock.classList.add('hidden');
                 headerUserZone.innerHTML = '';
             }
         }
 
-        // 2. Логика Авторизации (Вход / Регистрация)
         function toggleAuthMode() {
             isSignUpMode = !isSignUpMode;
             if (isSignUpMode) {
-                authTitle.innerText = "Регистрация в GreenBook";
-                authBtn.innerText = "Создать аккаунт";
-                authToggle.innerText = "Уже есть аккаунт? Войти";
+                authTitle.innerText = "Создать ID";
+                authBtn.innerText = "Зарегистрироваться";
+                authToggle.innerText = "Уже есть ID? Войти";
             } else {
-                authTitle.innerText = "Вход в GreenBook";
+                authTitle.innerText = "Вход по ID";
                 authBtn.innerText = "Войти";
-                authToggle.innerText = "Нет аккаунта? Зарегистрироваться";
+                authToggle.innerText = "Нет ID? Зарегистрироваться";
             }
         }
 
         async function handleAuth() {
-            const email = document.getElementById('authEmail').value.trim();
+            const rawUsername = document.getElementById('authUsername').value.trim();
             const password = document.getElementById('authPassword').value.trim();
 
-            if (!email || !password) {
-                alert("Пожалуйста, заполните все поля.");
+            if (!rawUsername || !password) {
+                alert("Заполните логин и пароль.");
                 return;
             }
+
+            // Убираем пробелы и спецсимволы из логина для безопасности, приводим к нижнему регистру
+            const cleanUsername = rawUsername.replace(/[^a-zA-Z0-9_]/g, '').toLowerCase();
+            
+            if (cleanUsername.length < 3) {
+                alert("Логин должен состоять минимум из 3 букв/цифр (без пробелов).");
+                return;
+            }
+
+            // Формируем скрытый email
+            const hiddenEmail = `${cleanUsername}${FAKE_DOMAIN}`;
 
             authBtn.disabled = true;
             authBtn.innerText = "Подождите...";
 
             try {
                 if (isSignUpMode) {
-                    // Регистрация
-                    const { data, error } = await supabase.auth.signUp({ email, password });
+                    const { data, error } = await supabase.auth.signUp({ 
+                        email: hiddenEmail, 
+                        password: password 
+                    });
                     if (error) throw error;
-                    alert("Регистрация успешна! Если на почту придет подтверждение — кликните по ссылке (или проверьте спам).");
                 } else {
-                    // Вход
-                    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+                    const { data, error } = await supabase.auth.signInWithPassword({ 
+                        email: hiddenEmail, 
+                        password: password 
+                    });
                     if (error) throw error;
                 }
             } catch (error) {
-                alert("Ошибка: " + error.message);
+                // Делаем ошибки более понятными
+                if (error.message.includes('Invalid login')) {
+                    alert("Неверный Логин или пароль.");
+                } else if (error.message.includes('already registered')) {
+                    alert("Такой Логин уже занят. Придумайте другой!");
+                } else {
+                    alert("Ошибка: " + error.message);
+                }
             } finally {
                 authBtn.disabled = false;
-                authBtn.innerText = isSignUpMode ? "Создать аккаунт" : "Войти";
+                authBtn.innerText = isSignUpMode ? "Зарегистрироваться" : "Войти";
             }
         }
 
@@ -364,7 +383,6 @@
             await supabase.auth.signOut();
         }
 
-        // 3. Логика работы с Лентой Постов
         async function fetchPosts() {
             try {
                 const { data, error } = await supabase
@@ -376,13 +394,12 @@
                 renderFeed(data);
             } catch (error) {
                 console.error("Ошибка ленты:", error.message);
-                feedContainer.innerHTML = `<div class="loading" style="color: red;">Ошибка загрузки ленты. Убедитесь, что выполнили SQL скрипт в панели управления.</div>`;
             }
         }
 
         function renderFeed(posts) {
             if (!posts || posts.length === 0) {
-                feedContainer.innerHTML = '<div class="loading">Лента пуста. Станьте первым автором!</div>';
+                feedContainer.innerHTML = '<div class="loading">Лента пуста. Напишите что-нибудь!</div>';
                 return;
             }
 
@@ -396,9 +413,9 @@
                 postElement.classList.add('post');
                 postElement.innerHTML = `
                     <div class="post-header">
-                        <div class="avatar" style="background-color: #65676b">${post.author_email[0].toUpperCase()}</div>
+                        <div class="avatar" style="background-color: #65676b">${post.author_username[0].toUpperCase()}</div>
                         <div class="post-info">
-                            <div class="author">${post.author_email}</div>
+                            <div class="author">@${post.author_username}</div>
                             <div class="time">${postDate}</div>
                         </div>
                     </div>
@@ -414,22 +431,20 @@
             const submitBtn = document.getElementById('submitPostBtn');
 
             if (!content) return;
-            if (!currentUser) {
-                alert("Вам нужно войти в систему!");
-                return;
-            }
 
             submitBtn.disabled = true;
             submitBtn.innerText = "Публикация...";
 
             try {
+                const currentUsername = extractUsername(currentUser.email);
+
                 const { error } = await supabase
                     .from('posts')
                     .insert([
                         { 
                             content: content,
-                            author_email: currentUser.email,
-                            user_id: currentUser.id // Передаем ID текущего пользователя
+                            author_username: currentUsername, // Сохраняем никнейм в базу
+                            user_id: currentUser.id 
                         }
                     ]);
 
@@ -437,9 +452,9 @@
 
                 textarea.value = '';
                 textarea.style.height = '40px';
-                await fetchPosts(); // Обновляем ленту
+                await fetchPosts();
             } catch (error) {
-                alert("Не удалось опубликовать пост: " + error.message);
+                alert("Ошибка публикации: " + error.message);
             } finally {
                 submitBtn.disabled = false;
                 submitBtn.innerText = "Опубликовать";
@@ -450,7 +465,6 @@
             return str.replace(/[&<>'"]/g, tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag));
         }
 
-        // Запуск при старте
         document.addEventListener('DOMContentLoaded', initApp);
     </script>
 </body>
